@@ -16,6 +16,7 @@ var barreira rune = '#'   // Barreira
 var vegetacao rune = '♣'  // Vegetação
 var inimigo rune = '▶'    // Inimigo
 var moeda rune = '◉'      // Moeda
+var portal rune = '⚑'     // Portal
 
 var mapa [][]rune                      // Alterado para [][]rune
 var posX, posY int                     // Posição inicial do personagem
@@ -108,6 +109,8 @@ func desenhaTudo() {
 				cor = termbox.ColorYellow
 			case personagem:
 				cor = termbox.ColorWhite
+			case portal:
+				cor = termbox.ColorCyan
 			default:
 				cor = termbox.ColorDefault
 			}
@@ -176,7 +179,7 @@ func moverInimigo() {
 				}
 
 				if vidas == 0 {
-					desenhaGameOver()
+					GameOver()
 					mutex.Unlock()
 					return // Termina a goroutine do inimigo
 				}
@@ -216,25 +219,29 @@ func mover(comando rune) {
 		return
 	}
 
+	if mapa[novaPosY][novaPosX] == portal {
+		// As coordenadas de destino devem ser definidas conforme a lógica do seu jogo.
+		verificarPortal(40, 15) // Exemplo: teletransporta para (10, 10)
+		desenhaTudo()           // Desenha todo o mapa novamente para atualizar a posição do personagem
+		return                  // Encerra a função para evitar mais movimentos ou duplicações
+	}
+
 	if mapa[novaPosY][novaPosX] == inimigo {
-		vidas-- // Personagem perde uma vida
-		mostrarEfeitoDano(novaPosX, novaPosY)
-		// Não mover o personagem para a célula do inimigo, manter ambos visíveis
+		vidas--
+		EfeitoDano(novaPosX, novaPosY)
 		if vidas == 0 {
-			desenhaGameOver()
+			GameOver()
 			return
 		}
 	} else {
-		// Se a célula destino é uma moeda, atualiza o contador e remove a moeda do mapa
 		if mapa[novaPosY][novaPosX] == moeda {
 			moedasColetadas++
-			mapa[novaPosY][novaPosX] = ' ' // Remove a moeda do mapa
-			mostrarEfeitoMoeda(novaPosX, novaPosY)
+			mapa[novaPosY][novaPosX] = ' '
+			EfeitoMoeda(novaPosX, novaPosY)
 		}
 
-		// Atualiza as posições do personagem e do que estava sob ele
 		ultimoCharSobPersonagem = mapa[novaPosY][novaPosX]
-		mapa[posY][posX] = ultimoCharSobPersonagem // Devolve o que estava sob o personagem
+		mapa[posY][posX] = ultimoCharSobPersonagem
 		posX, posY = novaPosX, novaPosY
 		mapa[posY][posX] = personagem
 	}
@@ -242,7 +249,30 @@ func mover(comando rune) {
 	desenhaTudo()
 }
 
-func mostrarEfeitoMoeda(x, y int) {
+func verificarPortal(destX, destY int) {
+	go efeitoPortal(posX, posY)                // Chama a goroutine para criar o efeito visual na posição antiga
+	mapa[posY][posX] = ' '                     // Limpa a posição antiga do personagem no mapa
+	posX, posY = destX, destY                  // Atualiza a posição do personagem para o destino do portal
+	ultimoCharSobPersonagem = mapa[posY][posX] // Atualiza o último caractere para a nova posição
+	mapa[posY][posX] = personagem              // Coloca o personagem na nova posição
+}
+
+func efeitoPortal(posX, posY int) {
+	originalChar := mapa[posY][posX] // Guarda o caractere original da posição do portal
+	for i := 0; i < 10; i++ {
+		if i%2 == 0 {
+			mapa[posY][posX] = '⚑' // Caractere de efeito visual, por exemplo
+		} else {
+			mapa[posY][posX] = originalChar // Restaura o caractere original
+		}
+		desenhaTudo()                     // Redesenha o mapa com o efeito visual
+		time.Sleep(50 * time.Millisecond) // Espera um pouco para o próximo passo do efeito
+	}
+	mapa[posY][posX] = originalChar // Certifica-se de que o caractere original é restaurado
+	desenhaTudo()                   // Desenha o mapa uma última vez para finalizar o efeito
+}
+
+func EfeitoMoeda(x, y int) {
 	termbox.SetCell(x, y, moeda, termbox.ColorYellow, termbox.ColorYellow)
 	termbox.Flush()
 	time.Sleep(200 * time.Millisecond)
@@ -250,7 +280,7 @@ func mostrarEfeitoMoeda(x, y int) {
 	termbox.Flush()
 }
 
-func mostrarEfeitoDano(x, y int) {
+func EfeitoDano(x, y int) {
 	// Efeito visual de dano na célula do inimigo
 	termbox.SetCell(x, y, inimigo, termbox.ColorDefault, termbox.ColorRed)
 	termbox.Flush()
@@ -266,7 +296,7 @@ func mostrarEfeitoDano(x, y int) {
 	termbox.Flush()
 }
 
-func desenhaGameOver() {
+func GameOver() {
 	termbox.Clear(termbox.ColorDefault, termbox.ColorDefault) // Limpa a tela
 
 	msgGameOver := "Game Over! Pressione ESC para sair."
