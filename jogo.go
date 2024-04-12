@@ -23,7 +23,7 @@ var piscarMensagem bool
 
 var mapa [][]rune
 var posX, posY int
-var ultimoCharSobPersonagem rune = ' '
+var ultimaPos rune = ' '
 var moedasColetadas int
 var vidas = 5
 var mutex sync.Mutex
@@ -174,7 +174,7 @@ func moverInimigo() {
 				if posX > 0 && mapa[posY][posX-1] == ' ' {
 					mapa[posY][posX] = ' '
 					posX--
-					ultimoCharSobPersonagem = ' '
+					ultimaPos = ' '
 					mapa[posY][posX] = personagem
 				}
 
@@ -259,8 +259,8 @@ func mover(comando rune) {
 		}
 
 		// Atualiza a posição do personagem
-		ultimoCharSobPersonagem = mapa[novaPosY][novaPosX]
-		mapa[posY][posX] = ultimoCharSobPersonagem
+		ultimaPos = mapa[novaPosY][novaPosX]
+		mapa[posY][posX] = ultimaPos
 		posX, posY = novaPosX, novaPosY
 		mapa[posY][posX] = personagem
 	}
@@ -290,9 +290,9 @@ func exibirAvisoMoedas() {
 	time.Sleep(3 * time.Second) // Exibe a mensagem por 3 segundos
 
 	// Limpa a posição atual do personagem antes de movê-lo de volta para a posição inicial.
-	mapa[posY][posX] = ultimoCharSobPersonagem
-	posX, posY = 8, 8             // Coordenadas da posição inicial, ajuste conforme necessário
-	ultimoCharSobPersonagem = ' ' // Assumindo que a posição inicial está vazia
+	mapa[posY][posX] = ultimaPos
+	posX, posY = 8, 8 // Coordenadas da posição inicial, ajuste conforme necessário
+	ultimaPos = ' '   // Assumindo que a posição inicial está vazia
 	mapa[posY][posX] = personagem
 	desenhaTudo()
 }
@@ -361,7 +361,7 @@ func verificarPortal(destX, destY int) {
 	go efeitoPortal(posX, posY)
 	mapa[posY][posX] = ' '
 	posX, posY = destX, destY
-	ultimoCharSobPersonagem = mapa[posY][posX]
+	ultimaPos = mapa[posY][posX]
 	mapa[posY][posX] = personagem
 }
 
