@@ -12,7 +12,6 @@ import (
 
 var personagem rune = '☺'
 var parede rune = '▣'
-var barreira rune = '#'
 var vegetacao rune = '♣'
 var inimigo rune = '▶'
 var moeda rune = '◉'
@@ -102,21 +101,19 @@ func desenhaTudo() {
 			var cor termbox.Attribute
 			switch char {
 			case parede:
-				cor = termbox.ColorDefault
-			case barreira:
-				cor = termbox.ColorMagenta
+				cor = termbox.ColorDefault | termbox.AttrBold | termbox.AttrUnderline
 			case vegetacao:
-				cor = termbox.ColorBlue
+				cor = termbox.ColorGreen | termbox.AttrBold
 			case inimigo:
-				cor = termbox.ColorRed
+				cor = termbox.ColorRed | termbox.AttrBold
 			case moeda:
-				cor = termbox.ColorYellow
+				cor = termbox.ColorYellow | termbox.AttrBold
 			case personagem:
-				cor = termbox.ColorBlue
+				cor = termbox.ColorBlue | termbox.AttrBold
 			case portal:
-				cor = termbox.ColorCyan
+				cor = termbox.ColorCyan | termbox.AttrBold
 			case vitoria:
-				cor = termbox.ColorLightMagenta
+				cor = termbox.ColorLightMagenta | termbox.AttrBold
 			default:
 				cor = termbox.ColorDefault
 			}
@@ -162,7 +159,7 @@ func moverInimigo() {
 		}
 
 		novaY := inimigoY + direcao
-		if movimentos >= maxMovimentos || novaY < 0 || novaY >= len(mapa) || mapa[novaY][inimigoX] == parede || mapa[novaY][inimigoX] == barreira {
+		if movimentos >= maxMovimentos || novaY < 0 || novaY >= len(mapa) || mapa[novaY][inimigoX] == parede {
 			direcao *= -1
 			movimentos = 0
 		} else {
@@ -217,7 +214,7 @@ func mover(comando rune) {
 
 	// Impede que o personagem se mova para uma posição ilegal
 	if novaPosY < 0 || novaPosY >= len(mapa) || novaPosX < 0 || novaPosX >= len(mapa[novaPosY]) ||
-		mapa[novaPosY][novaPosX] == parede || mapa[novaPosY][novaPosX] == barreira {
+		mapa[novaPosY][novaPosX] == parede {
 		return
 	}
 
