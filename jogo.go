@@ -3,6 +3,7 @@ package main
 import (
 	"bufio"
 	"fmt"
+	"math/rand"
 	"os"
 	"sync"
 	"time"
@@ -40,7 +41,7 @@ var vegetacao = Elemento{
 
 var inimigo = Elemento{
 	simbolo:  '▶',
-	cor:      termbox.ColorBlue,
+	cor:      termbox.ColorLightRed,
 	corFundo: termbox.ColorDefault,
 	tangivel: true,
 }
@@ -91,7 +92,6 @@ var posXInicial, posYInicial int
 var ultimoElementoSobPersonagem = vazio
 var statusMsg string
 
-// Nao utilizado...
 var efeitoNeblina = false
 var revelado [][]bool
 var raioVisao int = 3
@@ -103,6 +103,12 @@ var mutex sync.Mutex
 
 var startTime time.Time
 var jogoEmAndamento bool
+
+var exibindoAvisoMoedas bool
+var tempoAvisoMoedas time.Time
+
+var vegetacaoVariacoes = []rune{'♣', '♧'}
+var continuarMovimentacaoVegetacao bool
 
 func main() {
 	err := termbox.Init()
@@ -119,6 +125,7 @@ func main() {
 	mapa[posY][posX] = personagem
 	desenhaTudo()
 	go moverInimigo()
+	go moverVegetacao()
 
 	for {
 		switch ev := termbox.PollEvent(); ev.Type {
@@ -214,7 +221,6 @@ func desenhaBarraDeStatus() {
 		}
 	}
 
-	// Restante da função original para desenhar outras partes da barra de status
 	msg := "Use WASD para mover e E para interagir. ESC para sair. Moedas coletadas: " + fmt.Sprintf("%d", moedasColetadas) + " Vidas: " + fmt.Sprintf("%d", vidas)
 	for i, c := range msg {
 		termbox.SetCell(i, len(mapa)+2, c, termbox.ColorLightBlue, termbox.ColorDefault)
@@ -375,9 +381,40 @@ func mover(comando rune) {
 	}
 }
 
+func moverVegetacao() {
+	var cicloCount int
+	const cicloMax = 10
+	for {
+		time.Sleep(1 * time.Second)
+
+		mutex.Lock()
+		for y, linha := range mapa {
+			for x, elem := range linha {
+				if elem.simbolo == vegetacao.simbolo || elem.simbolo == '♧' {
+
+					if cicloCount < cicloMax {
+						novaVariacao := vegetacaoVariacoes[rand.Intn(len(vegetacaoVariacoes))]
+						mapa[y][x] = Elemento{simbolo: novaVariacao, cor: vegetacao.cor, corFundo: vegetacao.corFundo, tangivel: false}
+					} else {
+
+						mapa[y][x] = vegetacao
+					}
+				}
+			}
+		}
+		mutex.Unlock()
+		desenhaTudo()
+
+		if cicloCount < cicloMax {
+			cicloCount++
+		} else {
+			cicloCount = 0
+		}
+	}
+}
+
 func limparTela() {
 	termbox.Clear(termbox.ColorDefault, termbox.ColorDefault)
-
 }
 
 func exibeMensagem(msg string) {
@@ -398,9 +435,6 @@ func verificarMoedasEPosicionarEstrela() {
 		desenhaTudo()
 	}
 }
-
-var exibindoAvisoMoedas bool
-var tempoAvisoMoedas time.Time
 
 func exibirAvisoMoedas() {
 	mutex.Lock()
@@ -552,7 +586,7 @@ func StartGame() {
 	piscarMensagem = true
 	go piscarMensagemInicio()
 
-	termbox.PollEvent() // Awaiting initial key press to start the game
+	termbox.PollEvent()
 
 	piscarMensagem = false
 	termbox.Clear(termbox.ColorDefault, termbox.ColorDefault)
