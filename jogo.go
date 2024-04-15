@@ -10,19 +10,99 @@ import (
 	"github.com/nsf/termbox-go"
 )
 
-var personagem rune = '☺' // Personagem
-var parede rune = '▣'     // Parede
-var barreira rune = '#'   // Barreira
-var vegetacao rune = '♣'  // Vegetação
-var inimigo rune = '▶'    // Inimigo
-var moeda rune = '◉'      // Moeda
+type Elemento struct {
+	simbolo  rune
+	cor      termbox.Attribute
+	corFundo termbox.Attribute
+	tangivel bool
+}
 
-var mapa [][]rune                      // Alterado para [][]rune
-var posX, posY int                     // Posição inicial do personagem
-var ultimoCharSobPersonagem rune = ' ' // Assume que o chão inicial é vazio
-var moedasColetadas int                // Contagem de moedas coletadas
-var vidas = 5                          // Vidas do personagem
+var personagem = Elemento{
+	simbolo:  '☺',
+	cor:      termbox.ColorCyan,
+	corFundo: termbox.ColorDefault,
+	tangivel: true,
+}
+
+var parede = Elemento{
+	simbolo:  '▣',
+	cor:      termbox.ColorRed,
+	corFundo: termbox.ColorBlue,
+	tangivel: true,
+}
+
+var vegetacao = Elemento{
+	simbolo:  '♣',
+	cor:      termbox.ColorGreen,
+	corFundo: termbox.ColorDefault,
+	tangivel: false,
+}
+
+var inimigo = Elemento{
+	simbolo:  '▶',
+	cor:      termbox.ColorBlue,
+	corFundo: termbox.ColorDefault,
+	tangivel: true,
+}
+
+var moeda = Elemento{
+	simbolo:  '◉',
+	cor:      termbox.ColorYellow,
+	corFundo: termbox.ColorDefault,
+	tangivel: false,
+}
+
+var portal = Elemento{
+	simbolo:  '⚑',
+	cor:      termbox.ColorMagenta,
+	corFundo: termbox.ColorDefault,
+	tangivel: false,
+}
+
+var vitoria = Elemento{
+	simbolo:  '★',
+	cor:      termbox.ColorCyan,
+	corFundo: termbox.ColorDefault,
+	tangivel: false,
+}
+
+var vazio = Elemento{
+	simbolo:  ' ',
+	cor:      termbox.ColorDefault,
+	corFundo: termbox.ColorDefault,
+	tangivel: false,
+}
+
+var neblina = Elemento{
+	simbolo:  '.',
+	cor:      termbox.ColorDefault,
+	corFundo: termbox.ColorYellow,
+	tangivel: false,
+}
+
+var estrelaPosicionada bool
+var piscarMensagem bool
+
+var moedasColetadasMap = make(map[int]bool)
+
+var mapa [][]Elemento
+var posX, posY int
+var posXInicial, posYInicial int
+var ultimoElementoSobPersonagem = vazio
+var statusMsg string
+
+// Nao utilizado...
+var efeitoNeblina = false
+var revelado [][]bool
+var raioVisao int = 3
+
+var totalDeMoedas = 10
+var moedasColetadas int
+var vidas = 5
 var mutex sync.Mutex
+
+var startTime time.Time
+var jogoEmAndamento bool
 
 func main() {
 	err := termbox.Init()
@@ -31,31 +111,29 @@ func main() {
 	}
 	defer termbox.Close()
 
+	StartGame()
 	carregarMapa("mapa.txt")
+	if efeitoNeblina {
+		revelarArea()
+	}
 	mapa[posY][posX] = personagem
 	desenhaTudo()
-	go moverInimigo() // Inicia a goroutine para mover o inimigo
+	go moverInimigo()
 
 	for {
 		switch ev := termbox.PollEvent(); ev.Type {
 		case termbox.EventKey:
 			if ev.Key == termbox.KeyEsc {
-				return // Sair do programa
+				return
 			}
-			comando := rune(0) // Inicializa como rune nulo
-
-			if ev.Ch == 'w' {
-				comando = 'w'
-			} else if ev.Ch == 'a' {
-				comando = 'a'
-			} else if ev.Ch == 's' {
-				comando = 's'
-			} else if ev.Ch == 'd' {
-				comando = 'd'
+			if ev.Ch == 'e' {
+				interagir()
+			} else {
+				mover(ev.Ch)
 			}
-			mover(comando)
 			desenhaTudo()
 		}
+		termbox.Flush()
 	}
 }
 
@@ -67,70 +145,117 @@ func carregarMapa(nomeArquivo string) {
 	defer arquivo.Close()
 
 	scanner := bufio.NewScanner(arquivo)
-	y := 0 // Inicializa o contador de linhas
+	y := 0
 	for scanner.Scan() {
-		var linhaRune []rune
-		linha := scanner.Text()
-		for x, char := range linha {
-			if char == personagem {
-				posX, posY = x, y // Salva a posição inicial do personagem
-				char = ' '        // Substitui o personagem por um espaço no mapa
+		linhaTexto := scanner.Text()
+		var linhaElementos []Elemento
+		var linhaRevelada []bool
+		for x, char := range linhaTexto {
+			elementoAtual := vazio
+			switch char {
+			case parede.simbolo:
+				elementoAtual = parede
+			case moeda.simbolo:
+				elementoAtual = moeda
+			case vegetacao.simbolo:
+				elementoAtual = vegetacao
+			case inimigo.simbolo:
+				elementoAtual = inimigo
+			case portal.simbolo:
+				elementoAtual = portal
+			case vitoria.simbolo:
+				elementoAtual = vitoria
+			case neblina.simbolo:
+				elementoAtual = neblina
+			case personagem.simbolo:
+				posX, posY = x, y
+				posXInicial, posYInicial = x, y
+				elementoAtual = vazio
 			}
-			linhaRune = append(linhaRune, char)
+			linhaElementos = append(linhaElementos, elementoAtual)
+			linhaRevelada = append(linhaRevelada, false)
 		}
-		mapa = append(mapa, linhaRune)
-		y++ // Incrementa o contador de linhas após processar cada linha
+		mapa = append(mapa, linhaElementos)
+		revelado = append(revelado, linhaRevelada)
+		y++
 	}
 	if err := scanner.Err(); err != nil {
 		panic(err)
 	}
-
-	// Agora que o mapa foi carregado, coloque o personagem na sua posição inicial.
-	mapa[posY][posX] = personagem // Isso garante que haja apenas um personagem no mapa.
 }
 
 func desenhaTudo() {
 	termbox.Clear(termbox.ColorDefault, termbox.ColorDefault)
-
 	for y, linha := range mapa {
-		for x, char := range linha {
-			var cor termbox.Attribute
-			switch char {
-			case parede:
-				cor = termbox.ColorBlue
-			case barreira:
-				cor = termbox.ColorMagenta
-			case vegetacao:
-				cor = termbox.ColorGreen
-			case inimigo:
-				cor = termbox.ColorRed
-			case moeda:
-				cor = termbox.ColorYellow
-			case personagem:
-				cor = termbox.ColorWhite
-			default:
-				cor = termbox.ColorDefault
+		for x, elem := range linha {
+			if efeitoNeblina == false || revelado[y][x] {
+				if elem == moeda && moedasColetadasMap[y*100+x] {
+					elem = vazio
+				}
+				termbox.SetCell(x, y, elem.simbolo, elem.cor, elem.corFundo)
+			} else {
+				termbox.SetCell(x, y, neblina.simbolo, neblina.cor, neblina.corFundo)
 			}
-			termbox.SetCell(x, y, char, cor, termbox.ColorDefault)
 		}
 	}
 
-	// Desenha a interface do usuário, como o contador de moedas e vidas
-	msg := fmt.Sprintf("Use WASD para mover. Pressione ESC para sair. Moedas: %d Vidas: %d", moedasColetadas, vidas)
-	for i, c := range msg {
-		termbox.SetCell(i, len(mapa)+2, c, termbox.ColorWhite, termbox.ColorDefault)
-	}
+	desenhaBarraDeStatus()
 
 	termbox.Flush()
 }
 
+func desenhaBarraDeStatus() {
+	tempoDeJogo := time.Since(startTime).Round(time.Second)
+	tempoMsg := fmt.Sprintf("Tempo de jogo: %s", tempoDeJogo)
+
+	if jogoEmAndamento {
+		for i, c := range tempoMsg {
+			termbox.SetCell(i, len(mapa)+3, c, termbox.ColorLightBlue, termbox.ColorDefault)
+		}
+	}
+
+	// Restante da função original para desenhar outras partes da barra de status
+	msg := "Use WASD para mover e E para interagir. ESC para sair. Moedas coletadas: " + fmt.Sprintf("%d", moedasColetadas) + " Vidas: " + fmt.Sprintf("%d", vidas)
+	for i, c := range msg {
+		termbox.SetCell(i, len(mapa)+2, c, termbox.ColorLightBlue, termbox.ColorDefault)
+	}
+}
+
+func revelarArea() {
+	minX := max(0, posX-raioVisao)
+	maxX := min(len(mapa[0])-1, posX+raioVisao)
+	minY := max(0, posY-raioVisao/2)
+	maxY := min(len(mapa)-1, posY+raioVisao/2)
+
+	for y := minY; y <= maxY; y++ {
+		for x := minX; x <= maxX; x++ {
+
+			revelado[y][x] = true
+		}
+	}
+}
+
+func max(a, b int) int {
+	if a > b {
+		return a
+	}
+	return b
+}
+
+func min(a, b int) int {
+	if a < b {
+		return a
+	}
+	return b
+}
+
 func moverInimigo() {
-	var direcao int = 1 // 1 para "cima", -1 para "baixo"
+	var direcao int = 1
 	var movimentos int = 0
 	const maxMovimentos = 2
 
 	for {
-		time.Sleep(500 * time.Millisecond) // Intervalo de movimento
+		time.Sleep(500 * time.Millisecond)
 
 		mutex.Lock()
 		var inimigoX, inimigoY int
@@ -140,52 +265,49 @@ func moverInimigo() {
 				if char == inimigo {
 					inimigoX, inimigoY = x, y
 					encontrado = true
-					break // Sai do loop interno
+					break
 				}
 			}
 			if encontrado {
-				break // Sai do loop externo se o inimigo for encontrado
+				break
 			}
 		}
 
 		if !encontrado {
 			mutex.Unlock()
-			continue // Se o inimigo não foi encontrado, pula para a próxima iteração do loop
+			continue
 		}
 
 		novaY := inimigoY + direcao
-		if movimentos >= maxMovimentos || novaY < 0 || novaY >= len(mapa) || mapa[novaY][inimigoX] == parede || mapa[novaY][inimigoX] == barreira {
+		if movimentos >= maxMovimentos || novaY < 0 || novaY >= len(mapa) || mapa[novaY][inimigoX] == parede {
 			direcao *= -1
 			movimentos = 0
 		} else {
 			movimentos++
 			if novaY == posY && inimigoX == posX {
-				vidas-- // O personagem perde uma vida
+				vidas--
 
-				// Efeito visual vermelho
-				termbox.SetCell(posX, posY, personagem, termbox.ColorDefault, termbox.ColorRed)
+				termbox.SetCell(posX, posY, personagem.simbolo, termbox.ColorDefault, termbox.ColorRed)
 				termbox.Flush()
-				time.Sleep(200 * time.Millisecond) // Duração do efeito visual
+				time.Sleep(200 * time.Millisecond)
 
-				// Mover o personagem uma posição para trás se possível
-				if posX > 0 && mapa[posY][posX-1] == ' ' {
-					mapa[posY][posX] = ' ' // Limpa a posição atual do personagem
+				if posX > 0 && mapa[posY][posX-1] == vazio {
+					mapa[posY][posX] = vazio
 					posX--
-					ultimoCharSobPersonagem = ' '
-					mapa[posY][posX] = personagem // Redesenha o personagem na nova posição
+					ultimoElementoSobPersonagem = vazio
+					mapa[posY][posX] = personagem
 				}
 
 				if vidas == 0 {
-					desenhaGameOver()
+					GameOver()
 					mutex.Unlock()
-					return // Termina a goroutine do inimigo
+					return
 				}
 			}
 
-			// Muda o inimigo para a nova posição se não for parede ou barreira
-			mapa[inimigoY][inimigoX] = ' '  // Limpa a posição antiga
-			mapa[novaY][inimigoX] = inimigo // O inimigo ocupa a nova posição
-			inimigoY = novaY                // Atualiza a posição Y do inimigo
+			mapa[inimigoY][inimigoX] = vazio
+			mapa[novaY][inimigoX] = inimigo
+			inimigoY = novaY
 		}
 		mutex.Unlock()
 		desenhaTudo()
@@ -193,9 +315,6 @@ func moverInimigo() {
 }
 
 func mover(comando rune) {
-	mutex.Lock()
-	defer mutex.Unlock()
-
 	dx, dy := 0, 0
 	switch comando {
 	case 'w':
@@ -207,86 +326,271 @@ func mover(comando rune) {
 	case 'd':
 		dx = 1
 	}
-
 	novaPosX, novaPosY := posX+dx, posY+dy
+	if novaPosY >= 0 && novaPosY < len(mapa) && novaPosX >= 0 && novaPosX < len(mapa[novaPosY]) {
+		if mapa[novaPosY][novaPosX].tangivel && mapa[novaPosY][novaPosX] != portal {
+			if mapa[novaPosY][novaPosX] == inimigo {
+				vidas--
+				EfeitoDano(novaPosX, novaPosY)
 
-	// Restringe o personagem de sair do mapa ou andar sobre paredes e barreiras
-	if novaPosY < 0 || novaPosY >= len(mapa) || novaPosX < 0 || novaPosX >= len(mapa[novaPosY]) ||
-		mapa[novaPosY][novaPosX] == parede || mapa[novaPosY][novaPosX] == barreira {
-		return
-	}
-
-	if mapa[novaPosY][novaPosX] == inimigo {
-		vidas-- // Personagem perde uma vida
-		mostrarEfeitoDano(novaPosX, novaPosY)
-		// Não mover o personagem para a célula do inimigo, manter ambos visíveis
-		if vidas == 0 {
-			desenhaGameOver()
+				if vidas == 0 {
+					GameOver()
+				}
+				return
+			}
 			return
 		}
-	} else {
-		// Se a célula destino é uma moeda, atualiza o contador e remove a moeda do mapa
-		if mapa[novaPosY][novaPosX] == moeda {
-			moedasColetadas++
-			mapa[novaPosY][novaPosX] = ' ' // Remove a moeda do mapa
-			mostrarEfeitoMoeda(novaPosX, novaPosY)
+
+		if mapa[novaPosY][novaPosX] == portal {
+			destX, destY := 70, 25
+			verificarPortal(destX, destY)
+			return
+		} else if mapa[novaPosY][novaPosX] == vitoria {
+			if moedasColetadas < totalDeMoedas {
+				exibirAvisoMoedas()
+				mapa[posY][posX] = ultimoElementoSobPersonagem
+				posX, posY = posXInicial, posYInicial
+				ultimoElementoSobPersonagem = vazio
+				mapa[posY][posX] = personagem
+			} else {
+				animacaoVitoria(novaPosX, novaPosY)
+				mensagemVitoria()
+			}
+			return
+		} else if mapa[novaPosY][novaPosX] == moeda {
+			if !moedasColetadasMap[novaPosY*100+novaPosX] {
+				EfeitoMoeda(novaPosX, novaPosY)
+				moedasColetadas++
+				ultimoElementoSobPersonagem = vazio
+			}
 		}
 
-		// Atualiza as posições do personagem e do que estava sob ele
-		ultimoCharSobPersonagem = mapa[novaPosY][novaPosX]
-		mapa[posY][posX] = ultimoCharSobPersonagem // Devolve o que estava sob o personagem
+		mapa[posY][posX] = ultimoElementoSobPersonagem
+
+		ultimoElementoSobPersonagem = mapa[novaPosY][novaPosX]
 		posX, posY = novaPosX, novaPosY
 		mapa[posY][posX] = personagem
+
+		desenhaTudo()
+	}
+}
+
+func limparTela() {
+	termbox.Clear(termbox.ColorDefault, termbox.ColorDefault)
+
+}
+
+func exibeMensagem(msg string) {
+	largura, altura := termbox.Size()
+	x := (largura - len(msg)) / 2
+	y := altura / 2
+	for i, c := range msg {
+		termbox.SetCell(x+i, y, c, termbox.ColorWhite, termbox.ColorDefault)
+	}
+	termbox.Flush()
+}
+
+func verificarMoedasEPosicionarEstrela() {
+	if moedasColetadas == totalDeMoedas && !estrelaPosicionada {
+		estrelaX, estrelaY := 76, 28
+		mapa[estrelaY][estrelaX] = vitoria
+		estrelaPosicionada = true
+		desenhaTudo()
+	}
+}
+
+var exibindoAvisoMoedas bool
+var tempoAvisoMoedas time.Time
+
+func exibirAvisoMoedas() {
+	mutex.Lock()
+	defer mutex.Unlock()
+	msg := fmt.Sprintf("Você precisa coletar %d moedas para vencer!", totalDeMoedas)
+	largura, altura := termbox.Size()
+	y := len(mapa) + 5
+
+	if y >= altura {
+		y = altura - 1
 	}
 
+	for i := 0; i < largura; i++ {
+		termbox.SetCell(i, y, ' ', termbox.ColorWhite, termbox.ColorDefault)
+	}
+
+	for i, c := range msg {
+		termbox.SetCell(i, y, c, termbox.ColorRed, termbox.ColorDefault)
+	}
+
+	termbox.Flush()
+
+	time.Sleep(time.Second * 2)
+
+	for i := 0; i < largura; i++ {
+		termbox.SetCell(i, y, ' ', termbox.ColorDefault, termbox.ColorDefault)
+	}
+
+	termbox.Flush()
+}
+
+func mensagemVitoria() {
+	mutex.Lock()
+	defer mutex.Unlock()
+	msgVitoria := "Parabens! Voce ganhou! Pressione ESC para sair."
+
+	termbox.Flush()
+	y := len(mapa) + 5
+
+	for {
+		for i, c := range msgVitoria {
+			termbox.SetCell(i, y, c, termbox.ColorGreen, termbox.ColorDefault)
+		}
+		termbox.Flush()
+		time.Sleep(time.Second * 2)
+		switch ev := termbox.PollEvent(); ev.Type {
+		case termbox.EventKey:
+			if ev.Key == termbox.KeyEsc {
+				termbox.Close()
+				os.Exit(0)
+			}
+		}
+	}
+}
+
+func animacaoVitoria(x, y int) {
+	jogoEmAndamento = false
+	for i := 0; i < 20; i++ {
+		if i%2 == 0 {
+			termbox.SetCell(x, y, vitoria.simbolo, termbox.ColorYellow, termbox.ColorDefault)
+		} else {
+			termbox.SetCell(x, y, vitoria.simbolo, termbox.ColorLightMagenta, termbox.ColorDefault)
+		}
+		termbox.Flush()
+		time.Sleep(100 * time.Millisecond)
+	}
+
+}
+
+func verificarPortal(destX, destY int) {
+	efeitoPortal(posX, posY)
+	mapa[posY][posX] = vazio
+
+	posX, posY = destX, destY
+	ultimoElementoSobPersonagem = mapa[posY][posX]
+	mapa[posY][posX] = personagem
 	desenhaTudo()
 }
 
-func mostrarEfeitoMoeda(x, y int) {
-	termbox.SetCell(x, y, moeda, termbox.ColorYellow, termbox.ColorYellow)
-	termbox.Flush()
-	time.Sleep(200 * time.Millisecond)
-	termbox.SetCell(x, y, ' ', termbox.ColorDefault, termbox.ColorDefault)
-	termbox.Flush()
+func efeitoPortal(posX, posY int) {
+	originalChar := mapa[posY][posX]
+	for i := 0; i < 10; i++ {
+		if i%2 == 0 {
+			mapa[posY][posX] = portal
+		} else {
+			mapa[posY][posX] = originalChar
+		}
+		desenhaTudo()
+		time.Sleep(100 * time.Millisecond)
+	}
+
 }
 
-func mostrarEfeitoDano(x, y int) {
-	// Efeito visual de dano na célula do inimigo
-	termbox.SetCell(x, y, inimigo, termbox.ColorDefault, termbox.ColorRed)
+func EfeitoMoeda(x, y int) {
+	if !moedasColetadasMap[y*100+x] {
+		termbox.SetCell(x, y, moeda.simbolo, termbox.ColorYellow, termbox.ColorYellow)
+		termbox.Flush()
+		time.Sleep(200 * time.Millisecond)
+		termbox.SetCell(x, y, vazio.simbolo, termbox.ColorDefault, termbox.ColorDefault)
+		termbox.Flush()
+		moedasColetadasMap[y*100+x] = true
+	}
+
+	verificarMoedasEPosicionarEstrela()
+}
+
+func EfeitoDano(x, y int) {
+
+	termbox.SetCell(x, y, inimigo.simbolo, termbox.ColorDefault, termbox.ColorRed)
 	termbox.Flush()
 	time.Sleep(200 * time.Millisecond)
 
-	// Se o inimigo ainda estiver lá, desenha-o novamente
 	if mapa[y][x] == inimigo {
-		termbox.SetCell(x, y, inimigo, termbox.ColorDefault, termbox.ColorDefault)
+		termbox.SetCell(x, y, inimigo.simbolo, termbox.ColorDefault, termbox.ColorDefault)
 	} else {
-		termbox.SetCell(x, y, ' ', termbox.ColorDefault, termbox.ColorDefault)
+		termbox.SetCell(x, y, vazio.simbolo, termbox.ColorDefault, termbox.ColorDefault)
 	}
 
 	termbox.Flush()
 }
 
-func desenhaGameOver() {
-	termbox.Clear(termbox.ColorDefault, termbox.ColorDefault) // Limpa a tela
+func GameOver() {
+	termbox.Clear(termbox.ColorDefault, termbox.ColorDefault)
 
 	msgGameOver := "Game Over! Pressione ESC para sair."
-	largura, altura := termbox.Size() // Pega as dimensões do terminal
+	largura, altura := termbox.Size()
 	for i, c := range msgGameOver {
-		x := (largura-len(msgGameOver))/2 + i // Centraliza a mensagem
-		y := altura / 2                       // Posiciona na metade da altura do terminal
+		x := (largura-len(msgGameOver))/2 + i
+		y := altura / 2
 		termbox.SetCell(x, y, c, termbox.ColorWhite, termbox.ColorDefault)
 	}
 
-	termbox.Flush() // Atualiza a tela
+	termbox.Flush()
 
-	// Aguarda o usuário pressionar ESC para sair
 	for {
 		switch ev := termbox.PollEvent(); ev.Type {
 		case termbox.EventKey:
 			if ev.Key == termbox.KeyEsc {
-				termbox.Close() // Fecha a interface gráfica
-				os.Exit(0)      // Termina o programa
+				termbox.Close()
+				os.Exit(0)
 			}
 		}
 	}
+}
+
+func StartGame() {
+	startTime = time.Now()
+	jogoEmAndamento = true
+	piscarMensagem = true
+	go piscarMensagemInicio()
+
+	termbox.PollEvent() // Awaiting initial key press to start the game
+
+	piscarMensagem = false
+	termbox.Clear(termbox.ColorDefault, termbox.ColorDefault)
+	termbox.Flush()
+}
+
+func piscarMensagemInicio() {
+	msg := "Pressione qualquer tecla para comecar"
+	largura, altura := termbox.Size()
+
+	cores := []termbox.Attribute{termbox.ColorRed, termbox.ColorGreen, termbox.ColorYellow, termbox.ColorBlue, termbox.ColorMagenta, termbox.ColorCyan}
+	corIndex := 0
+
+	for piscarMensagem {
+
+		for i, c := range msg {
+			x := (largura-len(msg))/2 + i
+			y := altura / 2
+			termbox.SetCell(x, y, c, cores[corIndex], termbox.ColorDefault)
+		}
+		termbox.Flush()
+
+		time.Sleep(500 * time.Millisecond)
+
+		corIndex++
+		if corIndex >= len(cores) {
+			corIndex = 0
+		}
+	}
+
+	for i := range msg {
+		x := (largura-len(msg))/2 + i
+		y := altura / 2
+		termbox.SetCell(x, y, vazio.simbolo, termbox.ColorDefault, termbox.ColorDefault)
+	}
+	termbox.Flush()
+}
+
+func interagir() {
+	statusMsg = fmt.Sprintf("Interagindo em (%d, %d)", posX, posY)
 }
