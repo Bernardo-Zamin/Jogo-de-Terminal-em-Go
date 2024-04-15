@@ -405,7 +405,7 @@ var tempoAvisoMoedas time.Time
 func exibirAvisoMoedas() {
 	mutex.Lock()
 	defer mutex.Unlock()
-	msg := fmt.Sprintf("Você precisa coletar %d moedas para vencer!", totalDeMoedas)
+	msg := fmt.Sprintf("Você precisa coletar %d moedas para vencer! Voltando para a base...", totalDeMoedas)
 	largura, altura := termbox.Size()
 	y := len(mapa) + 5
 
