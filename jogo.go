@@ -19,7 +19,7 @@ type Elemento struct {
 
 var personagem = Elemento{
 	simbolo:  '☺',
-	cor:      termbox.ColorWhite,
+	cor:      termbox.ColorCyan,
 	corFundo: termbox.ColorDefault,
 	tangivel: true,
 }
@@ -91,6 +91,7 @@ var posXInicial, posYInicial int
 var ultimoElementoSobPersonagem = vazio
 var statusMsg string
 
+// Nao utilizado...
 var efeitoNeblina = false
 var revelado [][]bool
 var raioVisao int = 3
@@ -99,6 +100,9 @@ var totalDeMoedas = 10
 var moedasColetadas int
 var vidas = 5
 var mutex sync.Mutex
+
+var startTime time.Time
+var jogoEmAndamento bool
 
 func main() {
 	err := termbox.Init()
@@ -129,6 +133,7 @@ func main() {
 			}
 			desenhaTudo()
 		}
+		termbox.Flush()
 	}
 }
 
@@ -200,12 +205,19 @@ func desenhaTudo() {
 }
 
 func desenhaBarraDeStatus() {
-	for i, c := range statusMsg {
-		termbox.SetCell(i, len(mapa)+1, c, termbox.ColorBlack, termbox.ColorDefault)
+	tempoDeJogo := time.Since(startTime).Round(time.Second)
+	tempoMsg := fmt.Sprintf("Tempo de jogo: %s", tempoDeJogo)
+
+	if jogoEmAndamento {
+		for i, c := range tempoMsg {
+			termbox.SetCell(i, len(mapa)+3, c, termbox.ColorLightBlue, termbox.ColorDefault)
+		}
 	}
+
+	// Restante da função original para desenhar outras partes da barra de status
 	msg := "Use WASD para mover e E para interagir. ESC para sair. Moedas coletadas: " + fmt.Sprintf("%d", moedasColetadas) + " Vidas: " + fmt.Sprintf("%d", vidas)
 	for i, c := range msg {
-		termbox.SetCell(i, len(mapa)+3, c, termbox.ColorBlack, termbox.ColorDefault)
+		termbox.SetCell(i, len(mapa)+2, c, termbox.ColorLightBlue, termbox.ColorDefault)
 	}
 }
 
@@ -445,6 +457,7 @@ func mensagemVitoria() {
 }
 
 func animacaoVitoria(x, y int) {
+	jogoEmAndamento = false
 	for i := 0; i < 20; i++ {
 		if i%2 == 0 {
 			termbox.SetCell(x, y, vitoria.simbolo, termbox.ColorYellow, termbox.ColorDefault)
@@ -534,10 +547,12 @@ func GameOver() {
 }
 
 func StartGame() {
+	startTime = time.Now()
+	jogoEmAndamento = true
 	piscarMensagem = true
 	go piscarMensagemInicio()
 
-	termbox.PollEvent()
+	termbox.PollEvent() // Awaiting initial key press to start the game
 
 	piscarMensagem = false
 	termbox.Clear(termbox.ColorDefault, termbox.ColorDefault)
