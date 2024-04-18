@@ -448,33 +448,26 @@ func exibirAvisoMoedas() {
 	largura, altura := termbox.Size()
 	y := len(mapa) + 5
 
-	// Certifique-se de que y não ultrapasse a altura da tela
 	if y >= altura {
 		y = altura - 1
 	}
 
-	// Limpa a linha
 	for i := 0; i < largura; i++ {
 		termbox.SetCell(i, y, ' ', termbox.ColorWhite, termbox.ColorDefault)
 	}
 
-	// Exibe a mensagem
 	for i, c := range msg {
 		termbox.SetCell(i, y, c, termbox.ColorRed, termbox.ColorDefault)
 	}
 
-	// Atualiza a tela
 	termbox.Flush()
 
-	// Espera 2 segundos para a mensagem ser lida
 	time.Sleep(time.Second * 2)
 
-	// Limpa a mensagem depois do tempo de espera
 	for i := 0; i < largura; i++ {
 		termbox.SetCell(i, y, ' ', termbox.ColorDefault, termbox.ColorDefault)
 	}
 
-	// Atualiza a tela
 	termbox.Flush()
 }
 
@@ -524,11 +517,10 @@ func verificarPortal(destX, destY int) {
 	ultimoElementoSobPersonagem = mapa[posY][posX]
 	mapa[posY][posX] = personagem
 
-	desenhaTudo() // desenhaTudo() possui seu próprio mutex, por isso não está dentro do lock anterior
+	desenhaTudo()
 }
 func efeitoPortal(posX, posY int) {
-	// Esta função deve ser chamada apenas de outras que já possuem o mutex travado,
-	// pois ela modifica o estado do mapa.
+
 	originalChar := mapa[posY][posX]
 	for i := 0; i < 10; i++ {
 		if i%2 == 0 {
@@ -536,7 +528,7 @@ func efeitoPortal(posX, posY int) {
 		} else {
 			mapa[posY][posX] = originalChar
 		}
-		desenhaTudo() // A desenhaTudo() possui seu próprio mutex
+		desenhaTudo()
 		time.Sleep(100 * time.Millisecond)
 	}
 }
@@ -644,17 +636,17 @@ func piscarMensagemInicio() {
 
 func interagir() {
 	direcoes := []struct{ x, y int }{
-		{0, 1},  // abaixo
-		{0, -1}, // acima
-		{1, 0},  // direita
-		{-1, 0}, // esquerda
+		{0, 1},
+		{0, -1},
+		{1, 0},
+		{-1, 0},
 	}
 	mutex.Lock()
 	encontrouInimigo := false
 	for _, dir := range direcoes {
 		nx, ny := posX+dir.x, posY+dir.y
 		if ny >= 0 && ny < len(mapa) && nx >= 0 && nx < len(mapa[ny]) && mapa[ny][nx].simbolo == inimigo.simbolo {
-			mapa[ny][nx] = vazio // Inimigo morre imediatamente
+			mapa[ny][nx] = vazio
 			statusMsg = "Inimigo derrotado!"
 			encontrouInimigo = true
 			break
@@ -665,10 +657,9 @@ func interagir() {
 		statusMsg = "Nenhum inimigo por perto."
 	}
 
-	// Exibe a mensagem de status e espera um pouco
 	mutex.Unlock()
 	exibeStatus()
-	time.Sleep(1 * time.Second) // Atraso para garantir que a mensagem seja vista
+	time.Sleep(1 * time.Second)
 	desenhaTudo()
 	termbox.Flush()
 }
@@ -678,12 +669,10 @@ func exibeStatus() {
 	largura, _ := termbox.Size()
 	y := len(mapa) + 5
 
-	// Limpa a linha onde a mensagem de status será exibida
 	for x := 0; x < largura; x++ {
 		termbox.SetCell(x, y, ' ', termbox.ColorDefault, termbox.ColorDefault)
 	}
 
-	// Exibe a mensagem de status
 	for x, c := range statusMsg {
 		termbox.SetCell(x, y, c, termbox.ColorBlue, termbox.ColorDefault)
 	}
@@ -691,6 +680,5 @@ func exibeStatus() {
 	mutex.Unlock()
 	termbox.Flush()
 
-	// Limpa a mensagem de status para evitar sobreposição na próxima vez que for exibida
 	statusMsg = ""
 }
